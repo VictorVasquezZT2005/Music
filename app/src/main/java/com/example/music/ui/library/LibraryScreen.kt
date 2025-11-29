@@ -16,8 +16,8 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Favorite // <-- Importación para el corazón lleno
-import androidx.compose.material.icons.outlined.FavoriteBorder // <-- Importación para el corazón vacío
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -40,11 +40,12 @@ import com.example.music.api.DeezerClient
 import com.example.music.data.PreferenceManager
 import com.example.music.ui.navigation.Screen
 import com.example.music.ui.viewmodel.MusicPlayerViewModel
-import com.example.music.utils.ImageCache // Asegúrate de importar tu clase ImageCache
+import com.example.music.utils.ImageCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.example.music.data.models.Playlist // <-- Importación del modelo correcto
 
 private val BrandOrange = Color(0xFFFF5722)
 
@@ -57,12 +58,7 @@ data class AudioFile(
         get() = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
 }
 
-// --- NUEVO: MODELO TEMPORAL PARA PLAYLISTS ---
-data class Playlist(
-    val id: Long,
-    val name: String,
-    val songIds: List<Long> // Lista de IDs de canciones
-)
+// *** DEFINICIÓN DE PLAYLIST ELIMINADA - AHORA USA com.example.music.data.models.Playlist ***
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,18 +102,23 @@ fun LibraryScreen(
             .sortedBy { it.first }
     }
 
-    // --- NUEVO: LISTA TEMPORAL DE PLAYLISTS (MODIFICADA PARA INCLUIR FAVORITAS) ---
-    val favoriteSongs = viewModel.favoriteSongIds.toList() // Obtenemos las favoritas del ViewModel
+    // --- LÓGICA DE LISTAS DE REPRODUCCIÓN (CORREGIDA) ---
+    val favoriteSongs = viewModel.favoriteSongIds.toList()
 
     val playlists = remember(favoriteSongs) {
-        // ID 1 es ahora "Mis Favoritas", usando los IDs reales de canciones favoritas.
-        mutableStateOf(
-            listOf(
-                Playlist(1, "Mis Favoritas", favoriteSongs),
-                Playlist(2, "Rock Clásico", listOf(104, 105)),
-                Playlist(3, "Para Correr", listOf(106, 107, 108, 109))
-            ).filter { it.songIds.isNotEmpty() || it.id != 1L } // Ocultar si favoritas está vacío
+        // 1. Lista "Mis Favoritas" (siempre se incluye, aunque esté vacía)
+        val favorites = Playlist(1, "Mis Favoritas", favoriteSongs)
+
+        // 2. Otras listas (simulando listas creadas por el usuario)
+        val userPlaylists = listOf(
+            Playlist(2, "Rock Clásico", listOf(104, 105)),
+            Playlist(3, "Para Correr", listOf(106, 107, 108, 109)),
+            // Esto simularía una lista nueva que el usuario ha creado y aún no tiene canciones
+            Playlist(4, "Lista de Prueba Vacía", emptyList())
         )
+
+        // Combinamos y aseguramos que "Mis Favoritas" esté siempre al inicio (si su ID es 1)
+        mutableStateOf(listOf(favorites) + userPlaylists)
     }
 
     Column(
@@ -204,8 +205,10 @@ fun LibraryScreen(
                             )
                         }
                     }
-                    // --- NUEVA SECCIÓN LISTAS ---
+                    // --- SECCIÓN LISTAS ---
                     "Listas" -> {
+                        // Aquí podrías agregar un botón para "Crear nueva lista" si fuera una implementación real.
+
                         items(playlists.value, key = { it.id }) { playlist ->
                             PlaylistItem(playlist = playlist, onClick = {
                                 navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id))
@@ -218,7 +221,7 @@ fun LibraryScreen(
     }
 }
 
-// --- COMPONENTES ACTUALIZADOS CON BOTÓN DE CORAZÓN ---
+// --- COMPONENTES RESTANTES (Sin cambios) ---
 
 @Composable
 fun AudioItem(
@@ -229,7 +232,7 @@ fun AudioItem(
 ) {
     val context = LocalContext.current
     val defaultIcon = rememberVectorPainter(Icons.Default.MusicNote)
-    val BrandOrange = Color(0xFFFF5722) // Necesario redefinir o importar si está fuera del alcance
+    val BrandOrange = Color(0xFFFF5722)
 
     Row(
         modifier = Modifier
@@ -239,7 +242,6 @@ fun AudioItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(shape = RoundedCornerShape(4.dp), color = Color.LightGray.copy(alpha = 0.5f), modifier = Modifier.size(48.dp)) {
-            // Canciones usan la imagen local (rápida y correcta para archivos sueltos)
             AsyncImage(
                 model = ImageRequest.Builder(context).data(audioFile.albumArtUri).crossfade(true).build(),
                 contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
@@ -252,7 +254,6 @@ fun AudioItem(
             Text(audioFile.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
-        // --- BOTÓN DE CORAZÓN ---
         IconButton(onClick = onFavoriteToggle) {
             Icon(
                 imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
@@ -267,13 +268,12 @@ fun AudioItem(
 @Composable
 fun ArtistItem(
     artistName: String,
-    imageCache: ImageCache, // Recibimos el caché
+    imageCache: ImageCache,
     onClick: () -> Unit
 ) {
     val defaultIcon = rememberVectorPainter(Icons.Default.Person)
     var imageUrl by remember { mutableStateOf<String?>(null) }
 
-    // Lógica inteligente de carga (Igual que en ArtistDetailScreen)
     LaunchedEffect(artistName) {
         val cacheKey = "artist_$artistName"
         val cachedUrl = imageCache.getUrl(cacheKey)
@@ -281,7 +281,6 @@ fun ArtistItem(
         if (cachedUrl != null) {
             imageUrl = cachedUrl
         } else {
-            // Si no está en caché, buscamos en la API
             try {
                 withContext(Dispatchers.IO) {
                     val response = DeezerClient.service.searchArtist(artistName)
@@ -299,7 +298,7 @@ fun ArtistItem(
         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(50.dp)) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(imageUrl) // Usamos la URL (Coil usa su propio caché de disco)
+                    .data(imageUrl)
                     .crossfade(true)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .build(),
@@ -317,14 +316,11 @@ fun AlbumItem(
     albumName: String,
     albumId: Long,
     artistName: String,
-    imageCache: ImageCache, // Recibimos el caché
+    imageCache: ImageCache,
     onClick: () -> Unit
 ) {
-    // 1. Imagen Local (Prioridad inicial)
     val localUri = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
     val defaultIcon = rememberVectorPainter(Icons.Default.Album)
-
-    // 2. Imagen de Red (Mejora visual)
     var networkUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(albumName, artistName) {
@@ -349,7 +345,6 @@ fun AlbumItem(
         }
     }
 
-    // Decisión final: Si tenemos URL de red, la usamos. Si no, usamos la local.
     val finalImageModel = networkUrl ?: localUri
 
     Row(modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -372,14 +367,13 @@ fun AlbumItem(
     }
 }
 
-// --- NUEVO COMPONENTE: PlaylistItem ---
 @Composable
 fun PlaylistItem(
     playlist: Playlist,
     onClick: () -> Unit
 ) {
-    val defaultIcon = rememberVectorPainter(Icons.Default.List) // Usaremos un icono de lista
-    val BrandOrange = Color(0xFFFF5722) // Necesario redefinir o importar si está fuera del alcance
+    val defaultIcon = rememberVectorPainter(Icons.Default.List)
+    val BrandOrange = Color(0xFFFF5722)
 
     Row(
         modifier = Modifier
@@ -388,10 +382,9 @@ fun PlaylistItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Icono de la lista de reproducción
         Surface(
-            shape = RoundedCornerShape(8.dp), // Diferente forma que álbumes/canciones
-            color = BrandOrange.copy(alpha = 0.8f), // Color distintivo
+            shape = RoundedCornerShape(8.dp),
+            color = BrandOrange.copy(alpha = 0.8f),
             modifier = Modifier.size(50.dp)
         ) {
             Icon(
@@ -410,19 +403,20 @@ fun PlaylistItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            // Lógica para mostrar 0 si la lista está vacía
+            val songCountText = if (playlist.songIds.isEmpty()) "Vacía" else "${playlist.songIds.size} canciones"
             Text(
-                text = "${playlist.songIds.size} canciones", // Mostrar el contador
+                text = songCountText,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        // Puedes agregar un icono de flecha o menú aquí si es necesario
     }
 }
 
-// --- CARGA DE ARCHIVOS LOCALES ---
+// --- CARGA DE ARCHIVOS LOCALES (Sin cambios) ---
 suspend fun getAudioFiles(context: Context, excludedFolders: Set<String> = emptySet()): List<AudioFile> = withContext(Dispatchers.IO) {
     val audioList = mutableListOf<AudioFile>()
     val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {

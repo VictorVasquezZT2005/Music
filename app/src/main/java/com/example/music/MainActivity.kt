@@ -4,12 +4,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -34,6 +36,7 @@ import com.example.music.ui.viewmodel.MusicPlayerViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Permite que el contenido se dibuje detrás de las barras del sistema (status bar y navigation bar)
         enableEdgeToEdge()
 
         val preferenceManager = PreferenceManager(this)
@@ -64,10 +67,17 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { innerPadding ->
+
+                    // Definimos un modificador para las pantallas que SÍ usan la NavBar (Home, Library, Search)
+                    // Este modificador aplica el padding que compensa la barra inferior (innerPadding)
+                    // y usa fillMaxSize() para que las pantallas llenen el espacio restante.
+                    val defaultModifier = Modifier.padding(innerPadding).fillMaxSize()
+
                     NavHost(
                         navController = navController,
                         startDestination = startDestination,
-                        modifier = Modifier.padding(innerPadding)
+                        // El NavHost en sí no tiene padding. Las pantallas individuales lo manejan.
+                        modifier = Modifier.fillMaxSize()
                     ) {
                         composable(Screen.Permission.route) {
                             PermissionScreen(onPermissionGranted = {
@@ -76,19 +86,28 @@ class MainActivity : ComponentActivity() {
                             })
                         }
 
-                        // --- AQUÍ ESTABA EL ERROR ---
-                        // Ahora pasamos el navController a HomeScreen
+                        // Las pantallas con NavBar visible usan el Box con defaultModifier
                         composable(Screen.Home.route) {
-                            HomeScreen(navController = navController)
+                            Box(modifier = defaultModifier) {
+                                HomeScreen(navController = navController)
+                            }
                         }
-                        // ----------------------------
 
-                        composable(Screen.Search.route) { SearchScreen(viewModel = musicViewModel) }
+                        composable(Screen.Search.route) {
+                            Box(modifier = defaultModifier) {
+                                SearchScreen(viewModel = musicViewModel)
+                            }
+                        }
 
                         composable(Screen.Library.route) {
-                            LibraryScreen(viewModel = musicViewModel, navController = navController)
+                            Box(modifier = defaultModifier) {
+                                LibraryScreen(viewModel = musicViewModel, navController = navController)
+                            }
                         }
 
+                        // PlayerScreen NO recibe el innerPadding.
+                        // Esto permite que el PlayerHeader maneje el padding de la barra de estado por sí mismo,
+                        // eliminando el doble padding.
                         composable(Screen.Player.route) {
                             PlayerScreen(viewModel = musicViewModel, navController = navController)
                         }
@@ -97,16 +116,20 @@ class MainActivity : ComponentActivity() {
                             route = "artist_detail/{artistName}",
                             arguments = listOf(navArgument("artistName") { type = NavType.StringType })
                         ) { backStackEntry ->
-                            val artistName = backStackEntry.arguments?.getString("artistName") ?: ""
-                            ArtistDetailScreen(artistName = artistName, viewModel = musicViewModel, navController = navController)
+                            Box(modifier = defaultModifier) {
+                                val artistName = backStackEntry.arguments?.getString("artistName") ?: ""
+                                ArtistDetailScreen(artistName = artistName, viewModel = musicViewModel, navController = navController)
+                            }
                         }
 
                         composable(
                             route = "album_detail/{albumId}",
                             arguments = listOf(navArgument("albumId") { type = NavType.LongType })
                         ) { backStackEntry ->
-                            val albumId = backStackEntry.arguments?.getLong("albumId") ?: -1L
-                            AlbumDetailScreen(albumId = albumId, viewModel = musicViewModel, navController = navController)
+                            Box(modifier = defaultModifier) {
+                                val albumId = backStackEntry.arguments?.getLong("albumId") ?: -1L
+                                AlbumDetailScreen(albumId = albumId, viewModel = musicViewModel, navController = navController)
+                            }
                         }
                     }
                 }

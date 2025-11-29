@@ -97,7 +97,6 @@ fun ArtistDetailScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(BrandOrange)
-                .statusBarsPadding()
                 .padding(horizontal = 8.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

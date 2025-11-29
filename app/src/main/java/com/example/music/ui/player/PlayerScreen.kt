@@ -3,7 +3,7 @@ package com.example.music.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.* // <-- Importación necesaria para WindowInsets
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -50,58 +50,53 @@ fun PlayerScreen(
     val primaryColor = DarkPrimary
     val onBackgroundColor = DarkOnBackground
 
-    // --- CONTENEDOR PRINCIPAL OPTIMIZADO (DARK MODE) ---
-    Box(
+    // --- CONTENEDOR PRINCIPAL: COLUMN ---
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground) // Fondo oscuro
-            .systemBarsPadding()
+            .background(DarkBackground) // Fondo oscuro se extiende hasta arriba
+            .padding(horizontal = 20.dp), // Aplicamos el padding horizontal aquí
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            PlayerHeader(
-                onClose = { navController.popBackStack() },
-                onBackgroundColor = onBackgroundColor
-            )
+        // PlayerHeader ahora usa el cálculo dinámico de la barra de estado
+        PlayerHeader(
+            onClose = { navController.popBackStack() },
+            onBackgroundColor = onBackgroundColor
+        )
 
-            Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.weight(1f))
 
-            AlbumArtDisplay(song = song)
+        AlbumArtDisplay(song = song)
 
-            Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(30.dp))
 
-            TrackInfo(song = song, onBackgroundColor = onBackgroundColor)
+        TrackInfo(song = song, onBackgroundColor = onBackgroundColor)
 
-            Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-            PlayerProgressBar(
-                progress = viewModel.progress,
-                durationMs = song.duration,
-                onSeek = { viewModel.seekTo(it) },
-                primaryColor = primaryColor,
-                onBackgroundColor = onBackgroundColor
-            )
+        PlayerProgressBar(
+            progress = viewModel.progress,
+            durationMs = song.duration,
+            onSeek = { viewModel.seekTo(it) },
+            primaryColor = primaryColor,
+            onBackgroundColor = onBackgroundColor
+        )
 
-            Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-            MainControls(
-                isPlaying = viewModel.isPlaying,
-                onPrevious = { viewModel.playPrevious() },
-                onPlayPause = { viewModel.togglePlayPause() },
-                onNext = { viewModel.playNext() },
-                primaryColor = primaryColor,
-                onPrimaryColor = DarkOnPrimary,
-                onBackgroundColor = onBackgroundColor
-            )
+        MainControls(
+            isPlaying = viewModel.isPlaying,
+            onPrevious = { viewModel.playPrevious() },
+            onPlayPause = { viewModel.togglePlayPause() },
+            onNext = { viewModel.playNext() },
+            primaryColor = primaryColor,
+            onPrimaryColor = DarkOnPrimary,
+            onBackgroundColor = onBackgroundColor
+        )
 
-            Spacer(modifier = Modifier.weight(0.5f))
+        Spacer(modifier = Modifier.weight(0.5f))
 
-            SecondaryControls(onBackgroundColor = onBackgroundColor)
-        }
+        SecondaryControls(onBackgroundColor = onBackgroundColor)
     }
 }
 
@@ -109,8 +104,13 @@ fun PlayerScreen(
 
 @Composable
 fun PlayerHeader(onClose: () -> Unit, onBackgroundColor: Color) {
+    // SOLUCIÓN FINAL: Usar el cálculo dinámico de la barra de sistema.
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(DarkBackground) // El fondo sube hasta el borde
+            // Calcula la altura exacta de la barra de estado y aplica ese padding al contenido
+            .padding(top = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start
     ) {

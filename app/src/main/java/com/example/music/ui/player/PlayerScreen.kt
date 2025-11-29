@@ -1,41 +1,46 @@
 package com.example.music.ui.player
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.* // <-- Importación necesaria para WindowInsets
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
-import com.example.music.ui.library.AudioFile
+import com.example.music.api.DeezerClient
 import com.example.music.ui.viewmodel.MusicPlayerViewModel
+import com.example.music.utils.ImageCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-// --- COLORES BÁSICOS PARA TEMA OSCURO PLANO ---
-private val DarkBackground = Color(0xFF121212) // Fondo muy oscuro
-private val DarkSurface = Color(0xFF1E1E1E)    // Superficie un poco más clara
-private val DarkPrimary = Color(0xFFBB86FC)    // Morado brillante (Para contraste)
-private val DarkOnBackground = Color.White     // Texto e iconos claros
-private val DarkOnPrimary = Color.Black        // Texto en color primario
-private val DarkSecondaryIcon = Color(0xFFB3B3B3) // Iconos grises suaves
+// --- COLORES ---
+private val BrandOrange = Color(0xFFFF5722)
+private val BarBackground = Color(0xFF121212)
+private val TextWhite = Color(0xFFEEEEEE)
+private val TextSubtle = Color(0xFF9E9E9E)
+private val DarkerBackground = Color(0xFF0A0A0A)
+// Colores para la barra de progreso estilizada
+private val ActiveLineColor = BrandOrange // Naranja brillante para el progreso
+private val InactiveLineColor = Color(0xFF444444) // Gris oscuro y delgado
+private val ThumbDotColor = TextWhite // Punto blanco sutil, si se usa
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     viewModel: MusicPlayerViewModel,
@@ -45,282 +50,258 @@ fun PlayerScreen(
         navController.popBackStack()
         return
     }
+    val context = LocalContext.current
 
-    // Colores para el tema oscuro
-    val primaryColor = DarkPrimary
-    val onBackgroundColor = DarkOnBackground
+    // 1. LÓGICA DE IMAGEN HD (SIN CAMBIOS)
+    val imageCache = remember { ImageCache(context) }
+    var artModel by remember { mutableStateOf<Any>(song.albumArtUri) }
 
-    // --- CONTENEDOR PRINCIPAL: COLUMN ---
-    Column(
+    LaunchedEffect(song.albumName, song.artist) {
+        val cacheKey = "album_${song.albumName}_${song.artist}"
+        val cachedUrl = imageCache.getUrl(cacheKey)
+
+        if (cachedUrl != null) {
+            artModel = cachedUrl
+        } else {
+            if (song.albumName != "Unknown" && song.artist != "Unknown") {
+                try {
+                    withContext(Dispatchers.IO) {
+                        val response = DeezerClient.service.searchAlbum("${song.albumName} ${song.artist}")
+                        val urlFound = response.data.firstOrNull()?.cover_xl
+                        if (urlFound != null) {
+                            imageCache.saveUrl(cacheKey, urlFound)
+                            artModel = urlFound
+                        }
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground) // Fondo oscuro se extiende hasta arriba
-            .padding(horizontal = 20.dp), // Aplicamos el padding horizontal aquí
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(Color.Black)
     ) {
-        // PlayerHeader ahora usa el cálculo dinámico de la barra de estado
-        PlayerHeader(
-            onClose = { navController.popBackStack() },
-            onBackgroundColor = onBackgroundColor
+        // 1. IMAGEN DE FONDO (HD)
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(artModel)
+                .crossfade(true)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .build(),
+            contentDescription = "Background",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
         )
 
-        Spacer(modifier = Modifier.weight(1f))
-
-        AlbumArtDisplay(song = song)
-
-        Spacer(modifier = Modifier.height(30.dp))
-
-        TrackInfo(song = song, onBackgroundColor = onBackgroundColor)
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        PlayerProgressBar(
-            progress = viewModel.progress,
-            durationMs = song.duration,
-            onSeek = { viewModel.seekTo(it) },
-            primaryColor = primaryColor,
-            onBackgroundColor = onBackgroundColor
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        MainControls(
-            isPlaying = viewModel.isPlaying,
-            onPrevious = { viewModel.playPrevious() },
-            onPlayPause = { viewModel.togglePlayPause() },
-            onNext = { viewModel.playNext() },
-            primaryColor = primaryColor,
-            onPrimaryColor = DarkOnPrimary,
-            onBackgroundColor = onBackgroundColor
-        )
-
-        Spacer(modifier = Modifier.weight(0.5f))
-
-        SecondaryControls(onBackgroundColor = onBackgroundColor)
-    }
-}
-
-// ================= COMPONENTES INDIVIDUALES SIMPLIFICADOS (ADAPTADOS) =================
-
-@Composable
-fun PlayerHeader(onClose: () -> Unit, onBackgroundColor: Color) {
-    // SOLUCIÓN FINAL: Usar el cálculo dinámico de la barra de sistema.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(DarkBackground) // El fondo sube hasta el borde
-            // Calcula la altura exacta de la barra de estado y aplica ese padding al contenido
-            .padding(top = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start
-    ) {
-        IconButton(
-            onClick = onClose,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                Icons.Default.KeyboardArrowDown,
-                contentDescription = "Cerrar",
-                tint = onBackgroundColor
-            )
-        }
-    }
-}
-
-@Composable
-fun AlbumArtDisplay(song: AudioFile) {
-    val context = LocalContext.current
-    val defaultIcon = rememberVectorPainter(Icons.Default.MusicNote)
-
-    AsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(song.albumArtUri)
-            .crossfade(true)
-            .build(),
-        contentDescription = "Portada del Álbum",
-        contentScale = ContentScale.Crop,
-        modifier = Modifier
-            .fillMaxWidth(0.85f)
-            .aspectRatio(1f)
-            .clip(CircleShape)
-            .background(DarkSurface), // Fondo Surface Oscuro
-        error = defaultIcon,
-        placeholder = defaultIcon
-    )
-}
-
-@Composable
-fun TrackInfo(song: AudioFile, onBackgroundColor: Color) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = song.title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = onBackgroundColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = song.artist,
-            style = MaterialTheme.typography.bodyLarge,
-            color = onBackgroundColor.copy(alpha = 0.6f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PlayerProgressBar(
-    progress: Float,
-    durationMs: Long,
-    onSeek: (Float) -> Unit,
-    primaryColor: Color,
-    onBackgroundColor: Color
-) {
-    val currentTimeMs = (progress * durationMs).toLong()
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Slider(
-            value = progress,
-            onValueChange = onSeek,
-            modifier = Modifier.fillMaxWidth().height(16.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = primaryColor,
-                activeTrackColor = primaryColor,
-                inactiveTrackColor = DarkSurface // Pista inactiva con color de superficie oscuro
-            ),
-            thumb = {
-                SliderDefaults.Thumb(
-                    interactionSource = remember { MutableInteractionSource() },
-                    colors = SliderDefaults.colors(thumbColor = primaryColor),
-                    modifier = Modifier.size(12.dp)
+        // Capa oscura degradada
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.5f),
+                            Color.Black.copy(alpha = 0.85f),
+                            Color.Black.copy(alpha = 0.95f)
+                        )
+                    )
                 )
-            },
-            track = { sliderState ->
-                SliderDefaults.Track(
-                    colors = SliderDefaults.colors(
-                        activeTrackColor = primaryColor,
-                        inactiveTrackColor = DarkSurface
-                    ),
-                    sliderState = sliderState,
-                    modifier = Modifier.height(2.dp)
-                )
-            }
         )
+
+        // 2. BARRA SUPERIOR REFINADA (SIN BOTÓN DE MENÚ)
         Row(
             modifier = Modifier
+                .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .background(DarkerBackground.copy(alpha = 0.98f))
+                .statusBarsPadding()
+                // Aumentamos el padding para mantener el estilo
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = formatTime(currentTimeMs),
-                style = MaterialTheme.typography.labelSmall,
-                color = onBackgroundColor.copy(alpha = 0.6f)
+            // Miniatura más grande (Ahora es el primer elemento visual)
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(artModel).build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.DarkGray)
             )
-            Text(
-                text = formatTime(durationMs),
-                style = MaterialTheme.typography.labelSmall,
-                color = onBackgroundColor.copy(alpha = 0.6f)
-            )
-        }
-    }
-}
 
-@Composable
-fun MainControls(
-    isPlaying: Boolean,
-    onPrevious: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    primaryColor: Color,
-    onPrimaryColor: Color,
-    onBackgroundColor: Color
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Anterior
-        IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
-            Icon(
-                Icons.Default.SkipPrevious,
-                contentDescription = "Anterior",
-                modifier = Modifier.size(32.dp),
-                tint = onBackgroundColor
-            )
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Info Texto
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextWhite,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSubtle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Espacio al final para asegurar que la info de texto use el espacio
+            Spacer(modifier = Modifier.width(8.dp))
         }
 
-        // Play/Pause (Botón central plano con color Primario oscuro)
-        Box(
-            contentAlignment = Alignment.Center,
+        // 3. ZONA INFERIOR (CONTROLES)
+        Column(
             modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(primaryColor)
-                .clickable(onClick = onPlayPause)
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
         ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = "Play/Pause",
-                modifier = Modifier.size(40.dp),
-                tint = onPrimaryColor // Texto/Icono oscuro sobre el botón primario
-            )
+            // Zona Flotante (Like)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                DarkerBackground.copy(alpha = 0.3f),
+                                DarkerBackground.copy(alpha = 0.6f)
+                            )
+                        )
+                    )
+                    .padding(top = 24.dp)
+            ) {
+                // Aumentamos el padding horizontal del botón Like
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp, vertical = 0.dp),
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    IconButton(onClick = { /* Like Action */ }, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = Icons.Outlined.ThumbUp,
+                            contentDescription = "Like",
+                            tint = TextWhite,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
+
+            // PANEL DE CONTROLES
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(BarBackground)
+                    .padding(bottom = 40.dp, top = 16.dp)
+            ) {
+                // BARRA DE PROGRESO ESTILIZADA (Delgada con un punto visible)
+                Column(modifier = Modifier.padding(horizontal = 28.dp)) {
+                    Slider(
+                        value = viewModel.progress,
+                        onValueChange = { viewModel.seekTo(it) },
+                        colors = SliderDefaults.colors(
+                            // Thumb color (el punto que arrastras)
+                            thumbColor = ThumbDotColor,
+                            // Track activo (la línea de progreso)
+                            activeTrackColor = ActiveLineColor,
+                            // Track inactivo (el resto de la línea)
+                            inactiveTrackColor = InactiveLineColor
+                        ),
+                        // Hacemos el track muy delgado
+                        track = { sliderState ->
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                modifier = Modifier.height(3.dp), // Altura de la línea de progreso
+                                colors = SliderDefaults.colors(
+                                    activeTrackColor = ActiveLineColor,
+                                    inactiveTrackColor = InactiveLineColor
+                                ),
+                                // Esto elimina la forma predeterminada para que el thumb pueda flotar
+                                drawStopIndicator = null
+                            )
+                        },
+                        // Hacemos el punto (thumb) más pequeño y sutil
+                        thumb = {
+                            SliderDefaults.Thumb(
+                                interactionSource = remember { MutableInteractionSource() },
+                                colors = SliderDefaults.colors(thumbColor = ThumbDotColor),
+                                modifier = Modifier.size(10.dp) // Tamaño del punto blanco
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // Establecemos una altura mínima para la interacción
+                            .height(24.dp)
+                    )
+
+                    // Tiempos
+                    Row(
+                        modifier = Modifier.fillMaxWidth().offset(y = (-8).dp), // Subimos los tiempos un poco
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(formatTime((viewModel.progress * song.duration).toLong()), style = MaterialTheme.typography.labelMedium, color = TextSubtle)
+                        Text(formatTime(song.duration), style = MaterialTheme.typography.labelMedium, color = TextSubtle)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Botonera (Iconos grandes) - SIN CAMBIOS
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Repeat (48dp)
+                    IconButton(onClick = { /* Repeat */ }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Repeat, contentDescription = "Repetir", tint = TextSubtle, modifier = Modifier.size(28.dp))
+                    }
+
+                    // Skip Previous (64dp)
+                    IconButton(onClick = { viewModel.playPrevious() }, modifier = Modifier.size(64.dp)) {
+                        Icon(Icons.Default.SkipPrevious, contentDescription = "Anterior", tint = TextWhite, modifier = Modifier.size(40.dp))
+                    }
+
+                    // Play/Pause (80dp)
+                    IconButton(onClick = { viewModel.togglePlayPause() }, modifier = Modifier.size(80.dp)) {
+                        Icon(
+                            imageVector = if (viewModel.isPlaying) Icons.Default.PauseCircleFilled else Icons.Default.PlayCircleFilled,
+                            contentDescription = "Reproducir/Pausar",
+                            tint = BrandOrange,
+                            modifier = Modifier.size(80.dp)
+                        )
+                    }
+
+                    // Skip Next (64dp)
+                    IconButton(onClick = { viewModel.playNext() }, modifier = Modifier.size(64.dp)) {
+                        Icon(Icons.Default.SkipNext, contentDescription = "Siguiente", tint = TextWhite, modifier = Modifier.size(40.dp))
+                    }
+
+                    // Shuffle (48dp)
+                    IconButton(onClick = { /* Shuffle */ }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Shuffle, contentDescription = "Aleatorio", tint = BrandOrange, modifier = Modifier.size(28.dp))
+                    }
+                }
+            }
         }
-
-        // Siguiente
-        IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-            Icon(
-                Icons.Default.SkipNext,
-                contentDescription = "Siguiente",
-                modifier = Modifier.size(32.dp),
-                tint = onBackgroundColor
-            )
-        }
     }
 }
 
-@Composable
-fun SecondaryControls(onBackgroundColor: Color) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Íconos más neutros con color suave
-        PlayerIconButton(icon = Icons.Default.Shuffle, contentDescription = "Aleatorio", onBackgroundColor = onBackgroundColor)
-        PlayerIconButton(icon = Icons.Default.Repeat, contentDescription = "Repetir", onBackgroundColor = onBackgroundColor)
-        PlayerIconButton(icon = Icons.Outlined.FavoriteBorder, contentDescription = "Favorito", onBackgroundColor = onBackgroundColor)
-        PlayerIconButton(icon = Icons.Default.PlaylistPlay, contentDescription = "Playlist", onBackgroundColor = onBackgroundColor)
-    }
-}
-
-@Composable
-fun PlayerIconButton(icon: ImageVector, contentDescription: String, onBackgroundColor: Color, size: Dp = 24.dp) {
-    IconButton(onClick = { /* TODO: Implementar acciones */ }) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            tint = DarkSecondaryIcon, // Color gris suave para iconos secundarios
-            modifier = Modifier.size(size)
-        )
-    }
-}
-
-// Función auxiliar para formatear tiempo (sin cambios)
 fun formatTime(milliseconds: Long): String {
-    if (milliseconds < 0) return "00:00"
+    if (milliseconds < 0) return "0:00"
     val totalSeconds = milliseconds / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format("%02d:%02d", minutes, seconds)
+    return String.format("%d:%02d", minutes, seconds)
 }

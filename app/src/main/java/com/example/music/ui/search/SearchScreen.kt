@@ -39,6 +39,7 @@ fun SearchScreen(
     var allSongs by remember { mutableStateOf<List<AudioFile>>(emptyList()) }
 
     LaunchedEffect(Unit) {
+        // Cargar todas las canciones la primera vez
         allSongs = getAudioFiles(context)
     }
 
@@ -81,7 +82,7 @@ fun SearchScreen(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
-                // Barra de Búsqueda estilo "Tarjeta" (Como la imagen de referencia)
+                // Barra de Búsqueda estilo "Tarjeta"
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Color.White,
@@ -162,7 +163,12 @@ fun SearchScreen(
                             ) { audio ->
                                 AudioItem(
                                     audioFile = audio,
+                                    // === CORRECCIÓN AÑADIDA ===
+                                    isFavorite = viewModel.isFavorite(audio.id),
+                                    onFavoriteToggle = { viewModel.toggleFavorite(audio.id) },
+                                    // ==========================
                                     onClick = {
+                                        // Reproducir la canción usando la lista filtrada como contexto
                                         viewModel.playSong(audio, filteredSongs)
                                     }
                                 )

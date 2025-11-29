@@ -13,8 +13,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Favorite // <-- Importación para el corazón lleno
+import androidx.compose.material.icons.outlined.FavoriteBorder // <-- Importación para el corazón vacío
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -54,6 +57,14 @@ data class AudioFile(
         get() = ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
 }
 
+// --- NUEVO: MODELO TEMPORAL PARA PLAYLISTS ---
+data class Playlist(
+    val id: Long,
+    val name: String,
+    val songIds: List<Long> // Lista de IDs de canciones
+)
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
@@ -87,12 +98,26 @@ fun LibraryScreen(
         audioFiles.groupBy { it.artist }.keys.toList().sorted()
     }
 
-    // MODIFICADO: Agrupamos también por Artista para poder buscar la portada correctamente
+    // Agrupamos también por Artista para poder buscar la portada correctamente
     val albumsList = remember(audioFiles) {
         // La clave ahora es un Triple: (AlbumName, AlbumId, ArtistName)
         audioFiles.groupBy { Triple(it.albumName, it.albumId, it.artist) }
             .keys.toList()
             .sortedBy { it.first }
+    }
+
+    // --- NUEVO: LISTA TEMPORAL DE PLAYLISTS (MODIFICADA PARA INCLUIR FAVORITAS) ---
+    val favoriteSongs = viewModel.favoriteSongIds.toList() // Obtenemos las favoritas del ViewModel
+
+    val playlists = remember(favoriteSongs) {
+        // ID 1 es ahora "Mis Favoritas", usando los IDs reales de canciones favoritas.
+        mutableStateOf(
+            listOf(
+                Playlist(1, "Mis Favoritas", favoriteSongs),
+                Playlist(2, "Rock Clásico", listOf(104, 105)),
+                Playlist(3, "Para Correr", listOf(106, 107, 108, 109))
+            ).filter { it.songIds.isNotEmpty() || it.id != 1L } // Ocultar si favoritas está vacío
+        )
     }
 
     Column(
@@ -151,7 +176,12 @@ fun LibraryScreen(
                 when (viewModel.selectedLibraryCategory) {
                     "Canciones" -> {
                         items(audioFiles, key = { it.id }) { audio ->
-                            AudioItem(audio, onClick = { viewModel.playSong(audio, audioFiles) })
+                            AudioItem(
+                                audioFile = audio,
+                                isFavorite = viewModel.isFavorite(audio.id), // Estado favorito
+                                onFavoriteToggle = { viewModel.toggleFavorite(audio.id) }, // Toggle action
+                                onClick = { viewModel.playSong(audio, audioFiles) }
+                            )
                         }
                     }
                     "Artistas" -> {
@@ -174,11 +204,12 @@ fun LibraryScreen(
                             )
                         }
                     }
+                    // --- NUEVA SECCIÓN LISTAS ---
                     "Listas" -> {
-                        item {
-                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                Text("Próximamente: Playlists", color = Color.Gray)
-                            }
+                        items(playlists.value, key = { it.id }) { playlist ->
+                            PlaylistItem(playlist = playlist, onClick = {
+                                navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id))
+                            })
                         }
                     }
                 }
@@ -187,13 +218,26 @@ fun LibraryScreen(
     }
 }
 
-// --- COMPONENTES ACTUALIZADOS CON CACHÉ ---
+// --- COMPONENTES ACTUALIZADOS CON BOTÓN DE CORAZÓN ---
 
 @Composable
-fun AudioItem(audioFile: AudioFile, onClick: () -> Unit) {
+fun AudioItem(
+    audioFile: AudioFile,
+    isFavorite: Boolean, // NUEVO
+    onFavoriteToggle: () -> Unit, // NUEVO
+    onClick: () -> Unit
+) {
     val context = LocalContext.current
     val defaultIcon = rememberVectorPainter(Icons.Default.MusicNote)
-    Row(modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    val BrandOrange = Color(0xFFFF5722) // Necesario redefinir o importar si está fuera del alcance
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Surface(shape = RoundedCornerShape(4.dp), color = Color.LightGray.copy(alpha = 0.5f), modifier = Modifier.size(48.dp)) {
             // Canciones usan la imagen local (rápida y correcta para archivos sueltos)
             AsyncImage(
@@ -206,6 +250,16 @@ fun AudioItem(audioFile: AudioFile, onClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(audioFile.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(audioFile.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+
+        // --- BOTÓN DE CORAZÓN ---
+        IconButton(onClick = onFavoriteToggle) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                contentDescription = "Añadir a favoritas",
+                tint = if (isFavorite) BrandOrange else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }
@@ -315,6 +369,56 @@ fun AlbumItem(
             Text(text = albumName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(text = artistName, style = MaterialTheme.typography.bodySmall, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+    }
+}
+
+// --- NUEVO COMPONENTE: PlaylistItem ---
+@Composable
+fun PlaylistItem(
+    playlist: Playlist,
+    onClick: () -> Unit
+) {
+    val defaultIcon = rememberVectorPainter(Icons.Default.List) // Usaremos un icono de lista
+    val BrandOrange = Color(0xFFFF5722) // Necesario redefinir o importar si está fuera del alcance
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Icono de la lista de reproducción
+        Surface(
+            shape = RoundedCornerShape(8.dp), // Diferente forma que álbumes/canciones
+            color = BrandOrange.copy(alpha = 0.8f), // Color distintivo
+            modifier = Modifier.size(50.dp)
+        ) {
+            Icon(
+                painter = defaultIcon,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().padding(10.dp),
+                tint = Color.White
+            )
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = playlist.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${playlist.songIds.size} canciones", // Mostrar el contador
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        // Puedes agregar un icono de flecha o menú aquí si es necesario
     }
 }
 

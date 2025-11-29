@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.FavoriteBorder // Importación del corazón vacío
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,6 +51,9 @@ fun PlayerScreen(
         return
     }
     val context = LocalContext.current
+
+    // NUEVO: Observar el estado de favoritos
+    val isFavorite = viewModel.isFavorite(song.id)
 
     // 1. LÓGICA DE IMAGEN HD (SIN CAMBIOS)
     val imageCache = remember { ImageCache(context) }
@@ -121,7 +124,7 @@ fun PlayerScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Miniatura más grande (Ahora es el primer elemento visual)
+            // Miniatura más grande
             AsyncImage(
                 model = ImageRequest.Builder(context).data(artModel).build(),
                 contentDescription = null,
@@ -163,7 +166,7 @@ fun PlayerScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
         ) {
-            // Zona Flotante (Like)
+            // Zona Flotante (Corazón de Favoritos)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -178,18 +181,21 @@ fun PlayerScreen(
                     )
                     .padding(top = 24.dp)
             ) {
-                // Aumentamos el padding horizontal del botón Like
+                // Modificado: Corazón de favoritos
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 32.dp, vertical = 0.dp),
                     horizontalArrangement = Arrangement.Start
                 ) {
-                    IconButton(onClick = { /* Like Action */ }, modifier = Modifier.size(48.dp)) {
+                    IconButton(
+                        onClick = { viewModel.toggleFavorite(song.id) },
+                        modifier = Modifier.size(48.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.Outlined.ThumbUp,
-                            contentDescription = "Like",
-                            tint = TextWhite,
+                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Favorito",
+                            tint = if (isFavorite) BrandOrange else TextWhite, // Naranja si es favorito
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -203,49 +209,42 @@ fun PlayerScreen(
                     .background(BarBackground)
                     .padding(bottom = 40.dp, top = 16.dp)
             ) {
-                // BARRA DE PROGRESO ESTILIZADA (Delgada con un punto visible)
+                // BARRA DE PROGRESO ESTILIZADA (SIN CAMBIOS)
                 Column(modifier = Modifier.padding(horizontal = 28.dp)) {
                     Slider(
                         value = viewModel.progress,
                         onValueChange = { viewModel.seekTo(it) },
                         colors = SliderDefaults.colors(
-                            // Thumb color (el punto que arrastras)
                             thumbColor = ThumbDotColor,
-                            // Track activo (la línea de progreso)
                             activeTrackColor = ActiveLineColor,
-                            // Track inactivo (el resto de la línea)
                             inactiveTrackColor = InactiveLineColor
                         ),
-                        // Hacemos el track muy delgado
                         track = { sliderState ->
                             SliderDefaults.Track(
                                 sliderState = sliderState,
-                                modifier = Modifier.height(3.dp), // Altura de la línea de progreso
+                                modifier = Modifier.height(3.dp),
                                 colors = SliderDefaults.colors(
                                     activeTrackColor = ActiveLineColor,
                                     inactiveTrackColor = InactiveLineColor
                                 ),
-                                // Esto elimina la forma predeterminada para que el thumb pueda flotar
                                 drawStopIndicator = null
                             )
                         },
-                        // Hacemos el punto (thumb) más pequeño y sutil
                         thumb = {
                             SliderDefaults.Thumb(
                                 interactionSource = remember { MutableInteractionSource() },
                                 colors = SliderDefaults.colors(thumbColor = ThumbDotColor),
-                                modifier = Modifier.size(10.dp) // Tamaño del punto blanco
+                                modifier = Modifier.size(10.dp)
                             )
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            // Establecemos una altura mínima para la interacción
                             .height(24.dp)
                     )
 
-                    // Tiempos
+                    // Tiempos (SIN CAMBIOS)
                     Row(
-                        modifier = Modifier.fillMaxWidth().offset(y = (-8).dp), // Subimos los tiempos un poco
+                        modifier = Modifier.fillMaxWidth().offset(y = (-8).dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(formatTime((viewModel.progress * song.duration).toLong()), style = MaterialTheme.typography.labelMedium, color = TextSubtle)

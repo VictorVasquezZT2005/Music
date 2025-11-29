@@ -24,6 +24,7 @@ import com.example.music.ui.components.MiniPlayer
 import com.example.music.ui.components.NavBar
 import com.example.music.ui.details.AlbumDetailScreen
 import com.example.music.ui.details.ArtistDetailScreen
+import com.example.music.ui.details.PlaylistDetailScreen
 import com.example.music.ui.home.HomeScreen
 import com.example.music.ui.library.LibraryScreen
 import com.example.music.ui.navigation.Screen
@@ -54,7 +55,9 @@ class MainActivity : ComponentActivity() {
                 val currentRoute = navBackStackEntry?.destination?.route
 
                 // CONFIGURACIÓN DE VISIBILIDAD DE BARRAS
-                val showBars = currentRoute != Screen.Player.route && currentRoute != Screen.Permission.route
+                val showBars = currentRoute != Screen.Player.route &&
+                        currentRoute != Screen.Permission.route &&
+                        currentRoute?.startsWith(Screen.PlaylistDetail.route.split("/").first()) != true // Excluir rutas de detalle
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -113,7 +116,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(
-                            route = "artist_detail/{artistName}",
+                            route = Screen.ArtistDetail.route,
                             arguments = listOf(navArgument("artistName") { type = NavType.StringType })
                         ) { backStackEntry ->
                             Box(modifier = defaultModifier) {
@@ -123,13 +126,22 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(
-                            route = "album_detail/{albumId}",
+                            route = Screen.AlbumDetail.route,
                             arguments = listOf(navArgument("albumId") { type = NavType.LongType })
                         ) { backStackEntry ->
                             Box(modifier = defaultModifier) {
                                 val albumId = backStackEntry.arguments?.getLong("albumId") ?: -1L
                                 AlbumDetailScreen(albumId = albumId, viewModel = musicViewModel, navController = navController)
                             }
+                        }
+
+                        // Ruta de Playlist Detail (No usa Box con defaultModifier porque tiene su propio Scaffold)
+                        composable(
+                            route = Screen.PlaylistDetail.route,
+                            arguments = listOf(navArgument("playlistId") { type = NavType.LongType })
+                        ) { backStackEntry ->
+                            val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: -1L
+                            PlaylistDetailScreen(playlistId = playlistId, viewModel = musicViewModel, navController = navController)
                         }
                     }
                 }

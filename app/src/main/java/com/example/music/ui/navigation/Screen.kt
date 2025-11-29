@@ -11,11 +11,16 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Permission : Screen("permission", "Permisos", Icons.Default.Lock)
     object Player : Screen("player", "Now Playing", Icons.Default.PlayCircle)
 
-    // --- NUEVAS RUTAS CON PARÁMETROS ---
+    // --- RUTAS CON PARÁMETROS ---
     object ArtistDetail : Screen("artist_detail/{artistName}", "Artista", Icons.Default.Person) {
         fun createRoute(artistName: String) = "artist_detail/$artistName"
     }
     object AlbumDetail : Screen("album_detail/{albumId}", "Álbum", Icons.Default.Album) {
         fun createRoute(albumId: Long) = "album_detail/$albumId"
+    }
+
+    // --- NUEVA RUTA DE PLAYLIST ---
+    object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Lista", Icons.Default.List) {
+        fun createRoute(playlistId: Long) = "playlist_detail/$playlistId"
     }
 }
